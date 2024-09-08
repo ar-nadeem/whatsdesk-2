@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, shell,protocol } from "electron";
+import { BrowserWindow, Menu, shell,protocol,session } from "electron";
 import path from 'path';
 import fs from 'fs';
 import { EventEmitter } from 'events';
@@ -11,10 +11,11 @@ import { exec } from "child_process";
 const SettingController = getSettings();
 const Settings = SettingController.getAllConfigs();
 
+
 export class MainBrowser extends EventEmitter {
     private win: Electron.BrowserWindow | undefined;
     private app: Electron.App;
-    constructor(app) {
+    constructor(app: Electron.App) {
         super();
         this.app = app;
         this.init();
@@ -24,14 +25,16 @@ export class MainBrowser extends EventEmitter {
         if(fs.existsSync(path.resolve(__dirname, "..", "..", "icon", "logo.png"))){
             icon = path.resolve(__dirname, "..", "..", "icon", "logo.png");
         }
+        
+
         this.win = new BrowserWindow({
             show: true,
             icon,
             webPreferences: {
                 plugins: true,
                 spellcheck: false,
-                sandbox:false
-                /* partition:"persist:main" */
+                sandbox:false,
+                // partition:"persist:main"
             }
         });
 
@@ -55,6 +58,21 @@ export class MainBrowser extends EventEmitter {
         return this.win;
     }
     LoadUrl(): boolean {
+        try{
+            protocol.handle('events', async (request) => {
+                try {
+                    // Process the event and get the content
+                    const content = await this.processEvent(request);
+                    
+                    return content;
+                } catch (error) {
+                    console.error('Error processing event:', error);
+                    throw error;
+                }
+            });
+        }catch(ex){
+            console.error(ex);
+        }
         let serviceWorkers = this.win.webContents.session.serviceWorkers.getAllRunning()
         
         this.win.webContents.session.webRequest.onBeforeSendHeaders({ urls: ['https://web.whatsapp.com/*'] }, (details, callback) => {
@@ -79,23 +97,25 @@ export class MainBrowser extends EventEmitter {
                 responseHeaders:details.responseHeaders
             })
         })
-        protocol.registerBufferProtocol("events", async (request, result) => {
-            this.processEvent(request,result);
-        });
+   
+        
         
 		return true;
     }
-    processEvent(req,res){
+    async processEvent(req): Promise<Response> {
         let url = req.url;
-        url = url.replace("events://","");
-        let params = url.split("/");
+        url = url.replace('events://', '');
+        let params = url.split('/');
         console.log(params);
-        if(params[0] == "notifications"){
+    
+        if (params[0] === 'notifications') {
             this.Notification();
         }
-        const content = Buffer.from("");
-        return res(content);
+    
+        // Return an empty Globalresponse Object
+        return new Response();
     }
+    
     reload(): boolean {
         return this.LoadUrl();
     }
@@ -208,8 +228,8 @@ export class MainBrowser extends EventEmitter {
         })
 
         this.win.webContents.on('will-navigate', this.HandleRedirect)
-        this.win.webContents.on('new-window', this.HandleRedirect)
-
+        //this.win.webContents.on('new-window', this.HandleRedirect)
+        this.win.webContents.setWindowOpenHandler(({ url }) => { this.HandleRedirect(null, url); return { action: 'deny' } });
         //internal events
         SettingController.on('updateSettings', (name: string, value: ValueSettings) => {
             switch (name) {
@@ -235,7 +255,7 @@ export class MainBrowser extends EventEmitter {
     HandleRedirect(e: any, url: string): void {
         if (!Settings.openInternal.value) {
             if (!url.startsWith("https://web.whatsapp.com/")) {
-                e.preventDefault()
+                // e.preventDefault()
                 if (Settings.BrowserOpen.value == "default") {
                     shell.openExternal(url)
                 } else {

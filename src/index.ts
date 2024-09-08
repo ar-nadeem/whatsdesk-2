@@ -15,9 +15,20 @@ let SettingsController = getSettings();
 
 //Process name
 process.title = envConfig.name;
+
 protocol.registerSchemesAsPrivileged([
-    { scheme: 'events', privileges: { bypassCSP: true, supportFetchAPI:true } }
-  ])
+    {
+        scheme: 'events',
+        privileges: {
+            secure: true,
+            standard: true,
+            bypassCSP: true,
+            supportFetchAPI: true,
+            allowServiceWorkers: true // Optional, if you need service worker support
+        }
+    }
+]);
+
 app.on("ready", _ => {
     
     
